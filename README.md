@@ -64,35 +64,41 @@ Write API
 
 # 📁 Project Structure
 
-cdc-sync-pipeline
-
-read-service  
-    src  
-        routes  
-            products.js  
-            sync.js  
-        consumer.js  
-        mongo.js  
-        server.js  
-    Dockerfile  
-    package.json  
-
-write-service  
-    src  
-        routes  
-            products.js  
-        db.js  
-        server.js  
-    Dockerfile  
-    package.json  
-
-tests  
-
-.env.example  
-docker-compose.yml  
-schema.sql  
-setup-debezium.sh  
-README.md  
+cdc-sync-pipeline/
+│
+├── read-service/
+│   │
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── products.js
+│   │   │   └── sync.js
+│   │   │
+│   │   ├── consumer.js
+│   │   ├── mongo.js
+│   │   └── server.js
+│   │
+│   ├── Dockerfile
+│   └── package.json
+│
+├── write-service/
+│   │
+│   ├── src/
+│   │   ├── routes/
+│   │   │   └── products.js
+│   │   │
+│   │   ├── db.js
+│   │   └── server.js
+│   │
+│   ├── Dockerfile
+│   └── package.json
+│
+├── tests/
+│
+├── .env.example
+├── docker-compose.yml
+├── schema.sql
+├── setup-debezium.sh
+└── README.md
 
 ---
 
