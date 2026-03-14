@@ -1,0 +1,145 @@
+version: "3.8"
+
+services:
+
+  postgres:
+    image: debezium/postgres:14
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: products_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d products_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  connect:
+    image: debezium/connect:2.5
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+  # Auto-register Debezium connector
+  debezium-setup:
+    image: curlimages/curl:latest
+    container_name: debezium-setup
+    depends_on:
+      - connect
+    entrypoint: >
+      sh -c "
+      echo 'Waiting for Kafka Connect to start...';
+      sleep 25;
+
+      echo 'Registering Debezium connector...';
+
+      until curl -X POST http://connect:8083/connectors \
+      -H 'Content-Type: application/json' \
+      -d '{
+        \"name\": \"products-connector\",
+        \"config\": {
+          \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",
+          \"database.hostname\": \"postgres\",
+          \"database.port\": \"5432\",
+          \"database.user\": \"user\",
+          \"database.password\": \"password\",
+          \"database.dbname\": \"products_db\",
+          \"database.server.name\": \"pg-server\",
+          \"table.include.list\": \"public.products\",
+          \"plugin.name\": \"pgoutput\",
+          \"tombstones.on.delete\": \"true\"
+        }
+      }'; do
+        echo 'Connector registration failed. Retrying in 5 seconds...';
+        sleep 5;
+      done;
+
+      echo 'Debezium connector successfully registered!';
+      "
+
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: products_read_db
+    volumes:
+      - mongo_data:/data/db
+
+  write-service:
+    build: ./write-service
+    container_name: write-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: products_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+
+  read-service:
+    build: ./read-service
+    container_name: read-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+      - kafka
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: products_read_db
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: pg-server.public.products
+      CONSUMER_GROUP: products-sync-group
+
+volumes:
+  postgres_data:
+  mongo_data:
