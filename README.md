@@ -63,7 +63,7 @@ Write API
 ---
 
 # 📁 Project Structure
-
+```
 cdc-sync-pipeline/
 │
 ├── read-service/
@@ -99,7 +99,7 @@ cdc-sync-pipeline/
 ├── schema.sql
 ├── setup-debezium.sh
 └── README.md
-
+```
 ---
 
 # ⚙ Setup Instructions
